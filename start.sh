@@ -8,7 +8,6 @@ PERSISTENT="/workspace"
 # ============================================
 echo "[Unsloth] Setting up storage..."
 
-# Create persistent directory structure
 mkdir -p "$PERSISTENT/unsloth/cache/huggingface"
 mkdir -p "$PERSISTENT/unsloth/outputs"
 mkdir -p "$PERSISTENT/unsloth/exports"
@@ -16,11 +15,10 @@ mkdir -p "$PERSISTENT/unsloth/assets/datasets/uploads"
 mkdir -p "$PERSISTENT/unsloth/assets/datasets/recipes"
 mkdir -p "$PERSISTENT/unsloth/auth"
 mkdir -p "$PERSISTENT/unsloth/runs"
+mkdir -p "$PERSISTENT/unsloth/logs"
 
-# Create the studio directory structure
 mkdir -p /root/.unsloth/studio
 
-# Symlink data directories to persistent storage
 ln -sfn "$PERSISTENT/unsloth/cache"   /root/.unsloth/studio/cache
 ln -sfn "$PERSISTENT/unsloth/outputs" /root/.unsloth/studio/outputs
 ln -sfn "$PERSISTENT/unsloth/exports" /root/.unsloth/studio/exports
@@ -28,11 +26,9 @@ ln -sfn "$PERSISTENT/unsloth/assets"  /root/.unsloth/studio/assets
 ln -sfn "$PERSISTENT/unsloth/auth"    /root/.unsloth/studio/auth
 ln -sfn "$PERSISTENT/unsloth/runs"    /root/.unsloth/studio/runs
 
-# Symlink venvs to image-baked locations
 ln -sfn /opt/unsloth-venv    /root/.unsloth/studio/.venv
 ln -sfn /opt/unsloth-venv-t5 /root/.unsloth/studio/.venv_t5
 
-# Set HuggingFace cache to persistent storage
 export HF_HOME="$PERSISTENT/unsloth/cache/huggingface"
 
 # ============================================
@@ -48,9 +44,11 @@ if [ -z "$UNSLOTH_ADMIN_PASSWORD" ]; then
     exit 1
 fi
 
-# Only write password on first run (no existing auth.db)
+FIRST_RUN=false
 if [ ! -f "$PERSISTENT/unsloth/auth/auth.db" ]; then
+    FIRST_RUN=true
     echo "$UNSLOTH_ADMIN_PASSWORD" > "$PERSISTENT/unsloth/auth/.bootstrap_password"
+    chmod 600 "$PERSISTENT/unsloth/auth/.bootstrap_password"
     echo "[Unsloth] Admin password set for first run."
 else
     echo "[Unsloth] Existing auth database found, skipping password setup."
@@ -61,15 +59,10 @@ fi
 # ============================================
 echo "[Unsloth] Starting background services..."
 
-# SSH daemon (RunPod base image provides sshd, we ensure it's running)
 if command -v sshd &> /dev/null; then
     /usr/sbin/sshd 2>/dev/null || true
 fi
 
-# TensorBoard
-tensorboard --logdir="$PERSISTENT/unsloth/runs" --port=6006 --bind_all > /dev/null 2>&1 &
-
-# Jupyter Lab
 jupyter lab \
     --allow-root \
     --no-browser \
@@ -78,21 +71,25 @@ jupyter lab \
     --IdentityProvider.token="${JUPYTER_PASSWORD:-}" \
     --ServerApp.allow_origin='*' \
     --notebook-dir="$PERSISTENT" \
-    > /dev/null 2>&1 &
+    > "$PERSISTENT/unsloth/logs/jupyter.log" 2>&1 &
 
 # ============================================
-# Phase 4: Start Unsloth Studio (foreground)
+# Phase 4: Start Unsloth Studio
 # ============================================
 echo "═══════════════════════════════════════════════════════"
 echo "  Unsloth Studio is starting!"
 echo ""
 echo "  Web UI:      https://${RUNPOD_POD_ID}-8000.proxy.runpod.net"
 echo "  Jupyter:     https://${RUNPOD_POD_ID}-8888.proxy.runpod.net"
-echo "  (RUNPOD_POD_ID is auto-provided by RunPod)"
+echo ""
+if [ "$FIRST_RUN" = true ]; then
+    echo "  Password:    (set via UNSLOTH_ADMIN_PASSWORD)"
+else
+    echo "  Password:    (using existing account from network volume)"
+fi
 echo "  Storage:     $PERSISTENT/unsloth/"
 echo "═══════════════════════════════════════════════════════"
 
-# Run Studio (signal forwarding for graceful shutdown, crash resilience)
 cd /opt/unsloth/studio/backend
 /root/.unsloth/studio/.venv/bin/python run.py --host 0.0.0.0 --port 8000 &
 STUDIO_PID=$!
@@ -107,4 +104,7 @@ echo "    cd /opt/unsloth/studio/backend"
 echo "    /root/.unsloth/studio/.venv/bin/python run.py --host 0.0.0.0 --port 8000"
 echo "============================================="
 
+if [ "${EXIT_ON_CRASH:-false}" = "true" ]; then
+    exit 1
+fi
 sleep infinity
