@@ -1,4 +1,4 @@
-# Unsloth Studio — RunPod Pod Template
+# Unsloth Studio — Runpod Pod Template
 
 Fine-tune LLMs up to 2x faster with 70% less VRAM. Web UI for training
 (LoRA, full fine-tune), inference, data recipes, and model export.
@@ -10,7 +10,7 @@ OpenAI-compatible API included.
 |------|---------|-------------|
 | 8000 | Unsloth Studio | `https://<POD_ID>-8000.proxy.runpod.net` |
 | 8888 | JupyterLab | `https://<POD_ID>-8888.proxy.runpod.net` |
-| 22 | SSH | Via RunPod SSH connection |
+| 22 | SSH | Via Runpod SSH connection |
 
 ## Environment Variables
 
